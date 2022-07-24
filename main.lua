@@ -15,7 +15,7 @@ end
 
 function love.load()
     cursor = {x = 0, y = 0}
-    local mapFile, size = love.filesystem.read("maps/zutomayo.txt")
+    local mapFile, size = love.filesystem.read("maps/zekk_calling.txt")
     local mapLines = split(mapFile, "\n")
     timings = {}
     for i,line in ipairs(mapLines) do
@@ -23,11 +23,18 @@ function love.load()
         table.insert(timings, tokens[3])
     end
     index = 1
+    -- objects show up in the following order
+    oldObject = {x = 0, y = 0}
     nextObject = {x = 0, y = 1}
+    afterObject = {x = 0, y = 2}
     nextKey = ""
-    song = love.audio.newSource("maps/zutomayo.mp3", "stream")
-    song:play()
-    start = love.timer.getTime()
+    nextObjectApproachProgress = 0
+    tick = require "tick" 
+    song = love.audio.newSource("maps/zekk_calling.mp3", "stream")
+
+    local startDelay = 0
+    tick.delay(function () song:play() end, startDelay)
+    start = love.timer.getTime() + startDelay  --wait three seconds
 
     hitSound = love.audio.newSource("resources/normal-hitnormal.wav", "static")
 
@@ -35,10 +42,20 @@ function love.load()
 
     love.audio.setVolume(0.1)
     MAX_Y = 5
-    MAX_X = 7
+    MAX_X = 5
 
     hit = 0
     total = 0
+    love.window.setMode((MAX_X + 1) * 100, (MAX_Y + 1) * 100)
+end
+
+function drawCenteredSquare(x, y, size, color, style)
+    style = style or "line"
+    color = color or {1, 1, 1}
+    love.graphics.setColor(color[1], color[2], color[3])
+    local offset = (100 - size) / 2
+    love.graphics.rectangle(style, x * 100 + offset, y * 100 + offset, size, size)
+    love.graphics.setColor(1, 1, 1)
 end
 
 function love.draw()
@@ -57,6 +74,19 @@ function love.draw()
     love.graphics.rectangle("fill", 100 * cursor.x, 100 * cursor.y, 100, 100)
     love.graphics.rectangle("line", nextObject.x * 100 + 25, nextObject.y * 100 + 25, 50, 50)
     love.graphics.print({{0, 0, 0}, nextKey}, 100 * cursor.x + offset, 100 * cursor.y + offset, 0, 2)
+    if cursor.x == oldObject.x and cursor.y == oldObject.y then
+        if didHit == true then
+            love.graphics.setColor(0, 0, 1)
+        else
+            love.graphics.setColor(1, 0, 0)
+        end
+        love.graphics.rectangle("fill", oldObject.x * 100 + 25, oldObject.y * 100 + 25, 50, 50)
+        love.graphics.setColor(1, 1, 1)
+    end
+    love.graphics.rectangle("line", afterObject.x * 100 + 35, afterObject.y * 100 + 35, 30, 30)
+    if nextObjectApproachProgress > 0 then
+        drawCenteredSquare(nextObject.x, nextObject.y, 50 * nextObjectApproachProgress)
+    end
     love.graphics.print({{1, 0, 0}, tostring(round(100 * hit / total, 2)).."%"}, 0, 0, 0, 2)
 end
 
@@ -70,29 +100,36 @@ function love.keypressed(key)
     elseif key == "l" and cursor.x < MAX_X then
         cursor.x = cursor.x + 1
     end
-    
     hitSound:play()
 end
 
 function love.update(dt)
-    if (love.timer.getTime() - start) * 1000 > tonumber(timings[index]) then
+    tick.update(dt)
+    local adjustedTime = (love.timer.getTime() - start) * 1000 
+    if adjustedTime > tonumber(timings[index]) then
         index = index + 1
         total = total + 1
         if cursor.x == nextObject.x and cursor.y == nextObject.y then
+            didHit = true
             hit = hit + 1
+        else
+            didHit = false
         end
         local options = {j = {0, 1}, l = {1,0}, h = {-1,0}, k = {0,-1}}
         local inBoundsOptions = {}
         for key, option in pairs(options) do
-            if nextObject.x + option[1] >= 0 and nextObject.x + option[1] <= MAX_X and nextObject.y + option[2] >= 0 and nextObject.y + option[2] <= MAX_Y then
+            if afterObject.x + option[1] >= 0 and afterObject.x + option[1] <= MAX_X and afterObject.y + option[2] >= 0 and afterObject.y + option[2] <= MAX_Y then
                 table.insert(inBoundsOptions, key)
             end
         end
         nextKey = inBoundsOptions[math.random(1, #inBoundsOptions)]
         local objChange = options[nextKey]
-        print(objChange[1], objChange[2])
-        nextObject.x = nextObject.x + objChange[1]
-        nextObject.y = nextObject.y + objChange[2]
-        print(nextObject.x, nextObject.y)
+        oldObject.x = nextObject.x
+        oldObject.y = nextObject.y
+        nextObject.x = afterObject.x
+        nextObject.y = afterObject.y
+        afterObject.x = afterObject.x + objChange[1]
+        afterObject.y = afterObject.y + objChange[2]
     end   
+    nextObjectApproachProgress = 1 - (tonumber(timings[index]) - adjustedTime) / 1000
 end
